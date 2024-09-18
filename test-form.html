@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test expense upload</title>
+</head>
+<body>
+    <form method="post">
+        <!-- project , activity , amount , description , receipt-->
+        <label for="project">Project</label>
+        <input type="text" name="project" id="project" required>
+        <br>
+        <label for="activity">Activity</label>
+        <input type="text" name="activity" id="activity" required>
+        <br>
+        <label for="amount">Amount</label>
+        <input type="number" name="amount" id="amount" required>
+        <br>
+        <label for="description">Description</label>
+        <input type="text" name="description" id="description" required>
+        <br>
+        <label for="receipt">Receipt</label>
+        <input type="file" name="receipt" id="receipt" required>
+        <br>
+        <button type="submit">Submit</button>
+    </form>
+    <script>
+        let form = document.querySelector('form');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            let formData = new FormData(form);
+            let response = await fetch('http://localhost:8000/api/expenses/', {
+                method: 'POST',
+                headers: {
+                    "Authorization" : 'Bearer 83195b7e897840871e55ffd1e5f46b88850737f7',
+                },
+                body: formData
+            });
+            let result = await response.json();
+            console.log(result);
+        });
+    </script>
+</body>
+</html>
