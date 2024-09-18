@@ -20,10 +20,9 @@ from rest_framework import routers
 from finance import views
 
 router = routers.DefaultRouter()
-router.register(r'funding-sources', views.FundingSourceViewSet)
-router.register(r'stipulations', views.StipulationViewSet)
+router.register(r'users', views.UserViewSet)
 router.register(r'projects', views.ProjectViewSet)
-router.register(r'cost-centers', views.CostCenterViewSet)
+router.register(r'expenses', views.ExpenseSourceViewSet)
 
 urlpatterns = [
     path('api/', include(router.urls)),

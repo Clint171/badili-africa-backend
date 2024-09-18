@@ -1,14 +1,9 @@
 from rest_framework import serializers
-from .models import FundingSource, Stipulation, Project, CostCenter
+from .models import User , Project , Expense
 
-class FundingSourceSerializer(serializers.ModelSerializer):
+class UserSerializer(serializers.ModelSerializer):
     class Meta:
-        model = FundingSource
-        fields = '__all__'
-
-class StipulationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Stipulation
+        model = User
         fields = '__all__'
 
 class ProjectSerializer(serializers.ModelSerializer):
@@ -16,7 +11,7 @@ class ProjectSerializer(serializers.ModelSerializer):
         model = Project
         fields = '__all__'
 
-class CostCenterSerializer(serializers.ModelSerializer):
+class ExpenseSourceSerializer(serializers.ModelSerializer):
     class Meta:
-        model = CostCenter
+        model = Expense
         fields = '__all__'
