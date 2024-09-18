@@ -1,14 +1,10 @@
 from django.db import models
+from django.contrib.auth.models import AbstractUser
 
-class User(models.Model):
-    first_name = models.CharField(max_length=100)
-    last_name = models.CharField(max_length=100)
+class User(AbstractUser):
     alias = models.CharField(max_length=100)
-    dob = models.DateField()
-    email = models.EmailField(unique=True)
-    password = models.CharField(max_length=100)
+    dob = models.DateField(null=True, blank=True)
     designation = models.CharField(max_length=100)
-    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
@@ -24,13 +20,13 @@ class Project(models.Model):
         return self.project_name
 
 class Expense(models.Model):
-    project = models.ForeignKey(Project, on_delete=models.CASCADE , default=None)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, default=None)
     activity = models.CharField(max_length=100)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     description = models.TextField()
     receipt = models.FileField(upload_to="receipts/")
-    created_by = models.ForeignKey(User, on_delete=models.CASCADE , default=None)
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.project_name} - {self.amount}"
+        return f"{self.project.project_name} - {self.amount}"
