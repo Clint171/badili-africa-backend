@@ -11,7 +11,7 @@ class ProjectSerializer(serializers.ModelSerializer):
         model = Project
         fields = '__all__'
 
-class ExpenseSourceSerializer(serializers.ModelSerializer):
+class ExpenseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Expense
         fields = '__all__'
