@@ -165,7 +165,7 @@ def validate_file(file):
 
 def process_receipt_with_gpt(file_content):
     # Make a request to GPT-4 with the custom function call for receipts
-    response = openai.ChatCompletion.create(
+    response = openai.chat.completions.create(
         model="gpt-4",
         messages=[
             {
