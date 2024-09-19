@@ -44,13 +44,10 @@
         - [Success Response](#success-response-12)
       - [Retrieve Expense](#retrieve-expense)
         - [Success Response](#success-response-13)
-      - [Update Expense](#update-expense)
-        - [Request Body](#request-body-6)
-        - [Success Response](#success-response-14)
       - [Delete Expense](#delete-expense)
-        - [Success Response](#success-response-15)
+        - [Success Response](#success-response-14)
       - [Get Expenses by Project](#get-expenses-by-project)
-        - [Success Response](#success-response-16)
+        - [Success Response](#success-response-15)
   - [Models](#models)
     - [User](#user)
     - [Project](#project)
@@ -68,10 +65,10 @@ This document provides detailed information about the Badili Africa backend API.
 All URLs referenced in the documentation have the following base:
 
 ```
-http://server-domain/api/
+http://localhost:8000/api/
 ```
 
-`server-domain` will be replaced with the actual domain where the API is hosted. You can store this as a variable in your environment.
+You can store this as a variable in your environment.
 
 ## Authentication
 
@@ -243,10 +240,10 @@ Same as User Registration, but all fields are optional.
 [
   {
     "id": 1,
-    "project_name": "Project A",
+    "name": "Project A",
     "description": "Description of Project A",
-    "start_date": "2024-01-01",
-    "end_date": "2024-12-31",
+    "activities": ["Visit girls' school" , "Mission to home", ...],
+    "status" : "active"
     "created_at": "2024-09-18T14:30:00Z"
   },
   // ... more projects
@@ -261,12 +258,12 @@ Same as User Registration, but all fields are optional.
 
 ##### Request Body
 
-| Field        | Type   | Required | Description           |
-|--------------|--------|----------|-----------------------|
-| project_name | string | Yes      | Name of the project   |
-| description  | string | Yes      | Project description   |
-| start_date   | date   | Yes      | Project start date    |
-| end_date     | date   | Yes      | Project end date      |
+| Field        | Type   | Required | Description                                                                   |
+|--------------|--------|----------|-------------------------------------------------------------------------------|
+| name | string | Yes      | Name of the project                                                           |
+| description  | string | Yes      | Project description                                                           |
+| activities   | array  | Yes      | Project activities                                                            |
+| status       | string | Yes      | Project status enum : "inactive", "active"(default), "completed", "abandoned" |
 
 ##### Success Response
 
@@ -326,11 +323,14 @@ Same as Create Project, but all fields are optional.
 [
   {
     "id": 1,
-    "project": 1,
+    "project_id": 1,
+    "project_name" : "project 1",
     "activity": "Client meeting",
     "amount": "50.00",
     "description": "Lunch with client",
     "receipt": "/media/receipts/receipt_file.jpg",
+    "project_officer_id": 1,
+    "project_officer" : "Clint",
     "created_at": "2024-09-18T14:30:00Z"
   },
   // ... more expenses
@@ -346,13 +346,13 @@ Same as Create Project, but all fields are optional.
 
 ##### Request Body
 
-| Field       | Type    | Required | Description                |
-|-------------|---------|----------|----------------------------|
-| project     | integer | Yes      | ID of the associated project |
-| activity    | string  | Yes      | Description of the activity |
-| amount      | decimal | Yes      | Expense amount             |
-| description | string  | Yes      | Detailed description       |
-| receipt     | file    | Yes      | Receipt file (image/pdf)   |
+| Field       | Type    | Required | Description                    |
+|-------------|---------|----------|--------------------------------|
+| project     | string  | Yes      | Name of the associated project |
+| activity    | string  | Yes      | Description of the activity    |
+| amount      | decimal | Yes      | Expense amount                 |
+| description | string  | Yes      | Detailed description           |
+| receipt     | file    | Yes      | Receipt file (image/pdf)       |
 
 ##### Success Response
 
@@ -370,21 +370,6 @@ Same as Create Project, but all fields are optional.
 - **Code:** 200 OK
 - **Content:** Expense object
 
-#### Update Expense
-
-- **URL:** `/expenses/<id>/`
-- **Method:** `PUT`
-- **Auth required:** Yes
-- **Content-Type:** `multipart/form-data`
-
-##### Request Body
-
-Same as Create Expense, but all fields are optional.
-
-##### Success Response
-
-- **Code:** 200 OK
-- **Content:** Updated expense object
 
 #### Delete Expense
 
@@ -422,21 +407,23 @@ Same as Create Expense, but all fields are optional.
 ### Project
 
 - id: Integer
-- project_name: String
+- name: String
 - description: Text
-- start_date: Date
-- end_date: Date
+- activities: Array(string)
+- status: String (enum: inactive, active , completed , abandoned)
 - created_at: DateTime
 
 ### Expense
 
 - id: Integer
-- project: ForeignKey(Project)
+- project_id: ForeignKey(Project)
+- project_name
 - activity: String
 - amount: Decimal
 - description: Text
 - receipt: File
-- created_by: ForeignKey(User)
+- project_officer: String
+- project_officer_id: ForeignKey(User)
 - created_at: DateTime
 
 ## Error Handling
