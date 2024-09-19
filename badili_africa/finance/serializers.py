@@ -60,8 +60,8 @@ class ProjectSerializer(serializers.ModelSerializer):
 class ExpenseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Expense
-        fields = ['id', 'project', 'activity', 'amount', 'description', 'receipt', 'created_at']
-        read_only_fields = ('created_by', 'created_at')
+        fields = ['id', 'project_name', 'activity', 'amount', 'description', 'receipt', 'created_at']
+        read_only_fields = ('project_officer_id', 'project_officer' , 'created_at')
 
     def create(self, validated_data):
         validated_data['created_by'] = self.context['request'].user

@@ -1,4 +1,4 @@
-from django.shortcuts import render
+from django.shortcuts import render , get_object_or_404
 from django.http import JsonResponse
 from rest_framework import viewsets, permissions, generics, status
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
@@ -63,3 +63,23 @@ def get_expenses_by_project(request, project_id):
     expenses = Expense.objects.filter(project=project_id)
     serializer = ExpenseSerializer(expenses, many=True)
     return Response(serializer.data)
+
+@api_view(['PATCH'])
+@authentication_classes([BearerTokenAuthentication])
+@permission_classes([permissions.IsAuthenticated])
+def update_project_status(request, project_name):
+    project = get_object_or_404(Project, name=project_name)
+    new_status = request.data.get('status', '').lower()
+
+    # Validate the status
+    if new_status not in ['inactive', 'active', 'completed', 'abandoned']:
+        return Response({"error": "Invalid status"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Update and save the new status
+    project.status = new_status
+    project.save()
+
+    return Response({
+        "message": "Project status updated successfully",
+        "project": ProjectSerializer(project).data
+    }, status=status.HTTP_200_OK)
