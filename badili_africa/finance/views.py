@@ -1,5 +1,8 @@
 import os
-import openai
+import base64
+import json
+import requests
+import re
 from django.core.exceptions import ValidationError
 from django.shortcuts import render , get_object_or_404
 from django.http import JsonResponse
@@ -13,7 +16,7 @@ from .models import Expense, User, Project
 from .serializers import ExpenseSerializer, UserSerializer, ProjectSerializer, LoginSerializer
 from .authentication import BearerTokenAuthentication
 
-openai.api_key = os.getenv('OPENAI_API_KEY')
+api_key = os.getenv('OPENAI_API_KEY')
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -132,85 +135,95 @@ def update_project_status(request, project_name):
 def upload_receipt_and_extract_data(request):
     # Get the uploaded file from the request
     file = request.FILES.get('receipt', None)
-
     if not file:
         return Response({"error": "No file uploaded."}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Validate file size and extension (as per the previous example)
+    
+    # Validate file size and extension
     try:
         validate_file(file)
     except ValidationError as e:
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Send the file to GPT-4 for processing
+    
+    # Read the file content
+    file_content = file.read()
+    
+    # Send the file content to GPT-4 for processing
     try:
-        receipt_data = process_receipt_with_gpt(file)
+        receipt_data = process_receipt_with_gpt(file_content)
         return Response(receipt_data, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 def validate_file(file):
     # Check file size (limit 15MB)
     max_size_mb = 15
     if file.size > max_size_mb * 1024 * 1024:
         raise ValidationError(f"File size exceeds {max_size_mb}MB.")
-
+    
     # Check file extension
     allowed_extensions = ['.pdf', '.jpg', '.jpeg', '.png']
     ext = os.path.splitext(file.name)[1].lower()
     if ext not in allowed_extensions:
         raise ValidationError("Invalid file type. Allowed types: PDF or images.")
 
-
 def process_receipt_with_gpt(file_content):
-    # Make a request to GPT-4 with the custom function call for receipts
-    response = openai.chat.completions.create(
-        model="gpt-4",
-        messages=[
+    # Encode the file content as base64
+    base64_image = base64.b64encode(file_content).decode('utf-8')
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}"
+    }
+
+    payload = {
+        "model": "gpt-4o",
+        "messages": [
             {
                 "role": "system",
                 "content": "You are a system that processes receipts and extracts key details."
             },
             {
                 "role": "user",
-                "content": "Here is a receipt. Please extract the total amount and description.",
-                "files": {"receipt": file_content}
-            }
-        ],
-        functions=[
-            {
-                "name": "extract_receipt_data",
-                "description": "Extracts the total amount and description from a receipt.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "amount": {
-                            "type": "number",
-                            "description": "The total amount on the receipt."
-                        },
-                        "description": {
-                            "type": "string",
-                            "description": "A brief description of the receipt."
-                        }
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Here is a receipt. Please extract the total amount and provide a brief description of the purchase. Return the result as a JSON object with 'amount' (as a number) and 'description' (as a string) fields."
                     },
-                    "required": ["amount", "description"]
-                }
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{base64_image}"
+                        }
+                    }
+                ]
             }
         ],
-        response_format={"type" : "json_object"},
-        function_call={"name": "extract_receipt_data"}
-    )
+        "max_tokens": 300
+    }
 
-    # Process the response from GPT-4
-    function_result = response.get("choices")[0].get("message").get("function_call").get("arguments")
+    response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+    response_data = response.json()
 
-    if function_result:
-        # Parse the result
-        receipt_data = function_result
-        return {
-            "amount": receipt_data.get("amount"),
-            "description": receipt_data.get("description")
-        }
+    if 'error' in response_data:
+        raise Exception(f"GPT API Error: {response_data['error']['message']}")
+
+    content = response_data['choices'][0]['message']['content']
+    
+     # Extract JSON from the content
+    json_str = extract_json_from_markdown(content)
+    
+    try:
+        # Parse the JSON string into a Python dictionary
+        receipt_data = json.loads(json_str)
+        return receipt_data
+    except json.JSONDecodeError:
+        raise Exception("Failed to parse GPT-4 response as JSON")
+
+def extract_json_from_markdown(content):
+    # Remove Markdown code block syntax
+    json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
+    if json_match:
+        return json_match.group(1)
     else:
-        return {"error": "file is not receipt"}
+        # If no code block is found, assume the entire content is JSON
+        return content.strip()
