@@ -196,59 +196,60 @@ def upload_receipt_and_extract_data(request):
 
 
 def extract_receipt_data(text):
-    # Initialize a dictionary to hold the extracted data
-    data = {
-        "Item No": None,
-        "Product service": None,
-        "Quantity": None,
-        "Unit price": None,
-        "Subtotal": None,
-        "tax": None,
-        "discount": None,
-        "amount": None,
-        "description": None,
-    }
+    # Initialize an array to hold all extracted items
+    items = []
 
     # Define regex patterns to extract relevant fields
-    item_no_pattern = re.compile(r"(?i)item\s*no\.?\s*:\s*(\d+)", re.IGNORECASE)
-    product_pattern = re.compile(
-        r"(?i)product\s*service\s*:\s*([\w\s-]+)", re.IGNORECASE
+    item_pattern = re.compile(
+        r"(?P<item_no>\d+)\s+(?P<product>[\w\s]+)\s+(?P<quantity>\d+)\s+(?P<unit_price>\d+\.\d{2})\s+(?P<subtotal>\d+\.\d{2})",
+        re.IGNORECASE,
     )
-    quantity_pattern = re.compile(r"(?i)quantity\s*:\s*(\d+)", re.IGNORECASE)
-    unit_price_pattern = re.compile(
-        r"(?i)unit\s*price\s*:\s*\$?(\d+(\.\d{2})?)", re.IGNORECASE
-    )
-    subtotal_pattern = re.compile(
-        r"(?i)subtotal\s*:\s*\$?(\d+(\.\d{2})?)", re.IGNORECASE
-    )
-    tax_pattern = re.compile(r"(?i)tax\s*:\s*\$?(\d+(\.\d{2})?)", re.IGNORECASE)
-    discount_pattern = re.compile(
-        r"(?i)discount\s*:\s*\$?(\d+(\.\d{2})?)", re.IGNORECASE
-    )
-    amount_pattern = re.compile(r"(?i)amount\s*:\s*\$?(\d+(\.\d{2})?)", re.IGNORECASE)
-    description_pattern = re.compile(r"(?i)description\s*:\s*(.*)", re.IGNORECASE)
+    tax_pattern = re.compile(r"(?i)tax\s*[:\s]\s*\$?(\d+\.\d{2})")
+    discount_pattern = re.compile(r"(?i)discount\s*[:\s]\s*\$?(\d+\.\d{2})")
+    total_amount_pattern = re.compile(r"(?i)total\s*[:\s]\s*\$?(\d+\.\d{2})")
 
-    # Extract data using regex patterns
-    if match := item_no_pattern.search(text):
-        data["Item No"] = match.group(1)
-    if match := product_pattern.search(text):
-        data["Product service"] = match.group(1).strip()
-    if match := quantity_pattern.search(text):
-        data["Quantity"] = int(match.group(1))
-    if match := unit_price_pattern.search(text):
-        data["Unit price"] = float(match.group(1))
-    if match := subtotal_pattern.search(text):
-        data["Subtotal"] = float(match.group(1))
-    if match := tax_pattern.search(text):
-        data["tax"] = float(match.group(1))
-    if match := discount_pattern.search(text):
-        data["discount"] = float(match.group(1))
-    if match := amount_pattern.search(text):
-        data["amount"] = float(match.group(1))
-    if match := description_pattern.search(text):
-        data["description"] = match.group(1).strip()
+    # Iterate through each line of the receipt text and match expense items
+    for match in item_pattern.finditer(text):
+        item_no = match.group("item_no")
+        product = match.group("product").strip()
+        quantity = int(match.group("quantity"))
+        unit_price = float(match.group("unit_price"))
+        subtotal = float(match.group("subtotal"))
 
-    return data
+        # Add the matched item to the list
+        items.append(
+            {
+                "Item No": item_no,
+                "Product service": product,
+                "Quantity": quantity,
+                "Unit price": unit_price,
+                "Subtotal": subtotal,
+            }
+        )
+
+    # Extract the tax, discount, and total amount
+    tax = tax_pattern.search(text)
+    discount = discount_pattern.search(text)
+    total_amount = total_amount_pattern.search(text)
+
+    # Build the final JSON structure with all important details
+    receipt_data = {
+        "items": items,
+        "tax": float(tax.group(1)) if tax else 0.00,
+        "discount": float(discount.group(1)) if discount else 0.00,
+        "total_amount": float(total_amount.group(1)) if total_amount else None,
+        "description": extract_description(text),
+    }
+
+    return receipt_data
+
+
+def extract_description(text):
+    # Simple heuristic to get a description from the receipt (e.g., store name)
+    # Here, we assume the store name might appear near the top of the receipt
+    first_few_lines = text.split("\n")[:5]
+    description = " ".join(line.strip() for line in first_few_lines if line.strip())
+    return description
 
 
 def validate_file(file):
