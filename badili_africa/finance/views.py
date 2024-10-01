@@ -1,11 +1,13 @@
 import os
 import base64
 import json
+import fitz
 import requests
 import re
 import pytesseract
 from PIL import Image
 from io import BytesIO
+from pdf2image import convert_from_path
 from django.core.exceptions import ValidationError
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
@@ -159,107 +161,111 @@ def update_project_status(request, project_name):
     )
 
 
-@api_view(["POST"])
-@authentication_classes([BearerTokenAuthentication])
-@permission_classes([permissions.IsAuthenticated])
-@parser_classes([MultiPartParser, FormParser])
-def upload_receipt_and_extract_data(request):
-    # Get the uploaded file from the request
-    file = request.FILES.get("receipt", None)
-    if not file:
-        return Response(
-            {"error": "No file uploaded."}, status=status.HTTP_400_BAD_REQUEST
-        )
+# Function to validate the file (this can be customized based on size and extension)
+def validate_file(file):
+    max_file_size = 10 * 1024 * 1024  # 10 MB limit
+    allowed_extensions = ["jpg", "jpeg", "png", "pdf"]
+    file_extension = file.name.split(".")[-1].lower()
 
-    # Validate file size and extension
-    try:
-        validate_file(file)
-    except ValidationError as e:
-        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    if file.size > max_file_size:
+        raise ValidationError(f"File size exceeds {max_file_size} bytes.")
 
-    # Read the file content as an image
-    try:
-        image = Image.open(file)
-    except Exception as e:
-        return Response(
-            {"error": "Invalid image format."}, status=status.HTTP_400_BAD_REQUEST
-        )
-
-    # Use Tesseract to extract text from the image
-    extracted_text = pytesseract.image_to_string(image)
-
-    # Extract all relevant data from the text
-    extracted_data = extract_receipt_data(extracted_text)
-
-    # Return the result as JSON
-    return Response(extracted_data, status=status.HTTP_200_OK)
+    if file_extension not in allowed_extensions:
+        raise ValidationError(f"Unsupported file extension: {file_extension}")
 
 
+# Function to extract text from image files (png, jpg, jpeg)
+def extract_text_from_image(image_file):
+    image = Image.open(image_file)
+    return pytesseract.image_to_string(image)
+
+# Function to extract text from PDFs by converting PDF pages to images
+def extract_text_from_pdf(pdf_file):
+    # Convert PDF to images (1 image per page)
+    pages = convert_from_path(pdf_file)
+    extracted_text = ""
+    for page in pages:
+        text = pytesseract.image_to_string(page)
+        extracted_text += text + "\n"
+    return extracted_text
+
+# Define the description extraction function
+def extract_description(text):
+    description_pattern = re.compile(r'(invoice|due date|company name|billed to)', re.IGNORECASE)
+    for line in text.split('\n'):
+        if description_pattern.search(line):
+            return line.strip()
+    return "No description available"
+
+# Function to extract receipt details
 def extract_receipt_data(text):
-    # Initialize an array to hold all extracted items
     items = []
-
-    # Define regex patterns to extract relevant fields
     item_pattern = re.compile(
-        r"(?P<item_no>\d+)\s+(?P<product>[\w\s]+)\s+(?P<quantity>\d+)\s+(?P<unit_price>\d+\.\d{2})\s+(?P<subtotal>\d+\.\d{2})",
-        re.IGNORECASE,
+        r'(?P<product>[A-Za-z\s]+)\s+(?P<quantity>\d+)\s+(?P<unit_price>\d+\.\d{2})\s+(?P<subtotal>\d+\.\d{2})',
+        re.IGNORECASE
     )
-    tax_pattern = re.compile(r"(?i)tax\s*[:\s]\s*\$?(\d+\.\d{2})")
-    discount_pattern = re.compile(r"(?i)discount\s*[:\s]\s*\$?(\d+\.\d{2})")
-    total_amount_pattern = re.compile(r"(?i)total\s*[:\s]\s*\$?(\d+\.\d{2})")
+    tax_pattern = re.compile(r'(?i)(tax|vat|gst)\s*[:\s]\s*\$?(\d+\.\d{2})')
+    discount_pattern = re.compile(r'(?i)(discount|savings)\s*[:\s]\s*\$?(\d+\.\d{2})')
+    total_amount_pattern = re.compile(r'(?i)(total|grand total|amount due)\s*[:\s]\s*\$?(\d+\.\d{2})')
 
-    # Iterate through each line of the receipt text and match expense items
     for match in item_pattern.finditer(text):
-        item_no = match.group("item_no")
         product = match.group("product").strip()
         quantity = int(match.group("quantity"))
         unit_price = float(match.group("unit_price"))
         subtotal = float(match.group("subtotal"))
 
-        # Add the matched item to the list
-        items.append(
-            {
-                "Item No": item_no,
-                "Product service": product,
-                "Quantity": quantity,
-                "Unit price": unit_price,
-                "Subtotal": subtotal,
-            }
-        )
+        items.append({
+            "Product service": product,
+            "Quantity": quantity,
+            "Unit price": unit_price,
+            "Subtotal": subtotal
+        })
 
-    # Extract the tax, discount, and total amount
     tax = tax_pattern.search(text)
     discount = discount_pattern.search(text)
     total_amount = total_amount_pattern.search(text)
 
-    # Build the final JSON structure with all important details
-    receipt_data = {
-        "items": items,
-        "tax": float(tax.group(1)) if tax else 0.00,
-        "discount": float(discount.group(1)) if discount else 0.00,
-        "total_amount": float(total_amount.group(1)) if total_amount else None,
-        "description": extract_description(text),
+    return {
+        "items": items if items else "No items found",
+        "tax": float(tax.group(2)) if tax else 0.00,
+        "discount": float(discount.group(2)) if discount else 0.00,
+        "total_amount": float(total_amount.group(2)) if total_amount else None,
+        "description": extract_description(text)
     }
 
-    return receipt_data
+# Main API view to upload and extract receipt data
+@api_view(["POST"])
+@authentication_classes([BearerTokenAuthentication])
+@permission_classes([permissions.IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser])
+def upload_receipt_and_extract_data(request):
+    file = request.FILES.get("receipt", None)
+    if not file:
+        return Response({"error": "No file uploaded."}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Validate file extension and size
+    try:
+        validate_file(file)
+    except ValidationError as e:
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-def extract_description(text):
-    # Simple heuristic to get a description from the receipt (e.g., store name)
-    # Here, we assume the store name might appear near the top of the receipt
-    first_few_lines = text.split("\n")[:5]
-    description = " ".join(line.strip() for line in first_few_lines if line.strip())
-    return description
+    file_extension = file.name.split('.')[-1].lower()
 
+    # Check file type and extract text accordingly
+    if file_extension in ['png', 'jpg', 'jpeg']:
+        try:
+            extracted_text = extract_text_from_image(file)
+        except Exception as e:
+            return Response({"error": "Could not process the image file."}, status=status.HTTP_400_BAD_REQUEST)
+    elif file_extension == 'pdf':
+        try:
+            extracted_text = extract_text_from_pdf(file)
+        except Exception as e:
+            return Response({"error": "Could not process the PDF file."}, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        return Response({"error": "Unsupported file format."}, status=status.HTTP_400_BAD_REQUEST)
 
-def validate_file(file):
-    # Check file size (limit 15MB)
-    max_size_mb = 15
-    if file.size > max_size_mb * 1024 * 1024:
-        raise ValidationError(f"File size exceeds {max_size_mb}MB.")
+    # Extract receipt details from the extracted text
+    extracted_data = extract_receipt_data(extracted_text)
 
-    # Check file extension
-    allowed_extensions = [".pdf", ".jpg", ".jpeg", ".png"]
-    ext = os.path.splitext(file.name)[1].lower()
-    if ext not in allowed_extensions:
-        raise ValidationError("Invalid file type. Allowed types: PDF or images.")
+    return Response(extracted_data, status=status.HTTP_200_OK)
