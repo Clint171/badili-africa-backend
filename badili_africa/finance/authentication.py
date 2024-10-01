@@ -1,8 +1,9 @@
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 
+
 class BearerTokenAuthentication(TokenAuthentication):
-    keyword = 'Bearer'
+    keyword = "Bearer"
 
     def authenticate(self, request):
         auth = super().authenticate(request)
@@ -11,6 +12,6 @@ class BearerTokenAuthentication(TokenAuthentication):
 
         user, token = auth
         if not user.is_active:
-            raise AuthenticationFailed('User inactive or deleted.')
+            raise AuthenticationFailed("User inactive or deleted.")
 
         return user, token

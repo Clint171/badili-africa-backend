@@ -1,10 +1,16 @@
 import os
-import openai
+import base64
+import json
+import requests
+import re
+import pytesseract
+from PIL import Image
+from io import BytesIO
 from django.core.exceptions import ValidationError
-from django.shortcuts import render , get_object_or_404
+from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from rest_framework import viewsets, permissions, generics, status
-from rest_framework.decorators import api_view, authentication_classes, permission_classes , parser_classes
+from rest_framework.decorators import api_view, authentication_classes, permission_classes, parser_classes
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
@@ -13,17 +19,20 @@ from .models import Expense, User, Project
 from .serializers import ExpenseSerializer, UserSerializer, ProjectSerializer, LoginSerializer
 from .authentication import BearerTokenAuthentication
 
-openai.api_key = os.getenv('OPENAI_API_KEY')
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAdminUser]
 
+
 class ProjectViewSet(viewsets.ModelViewSet):
     queryset = Project.objects.all()
     serializer_class = ProjectSerializer
     permission_classes = [permissions.IsAuthenticated]
+
 
 class ExpenseViewSet(viewsets.ModelViewSet):
     queryset = Expense.objects.all()
@@ -44,7 +53,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
 
         # Get the uploaded file from the request
         file = self.request.FILES.get('receipt', None)
-        
+
         # Validate file size and type
         if file:
             self.validate_file(file)
@@ -84,6 +93,7 @@ class SignupView(generics.CreateAPIView):
             "token": token.key
         }, status=status.HTTP_201_CREATED)
 
+
 class LoginView(ObtainAuthToken):
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(data=request.data, context={'request': request})
@@ -96,6 +106,7 @@ class LoginView(ObtainAuthToken):
             'email': user.email
         })
 
+
 @api_view(['GET'])
 @authentication_classes([BearerTokenAuthentication])
 @permission_classes([permissions.IsAuthenticated])
@@ -103,6 +114,7 @@ def get_expenses_by_project(request, project_id):
     expenses = Expense.objects.filter(project_id=project_id)
     serializer = ExpenseSerializer(expenses, many=True)
     return Response(serializer.data)
+
 
 @api_view(['PATCH'])
 @authentication_classes([BearerTokenAuthentication])
@@ -132,22 +144,44 @@ def update_project_status(request, project_name):
 def upload_receipt_and_extract_data(request):
     # Get the uploaded file from the request
     file = request.FILES.get('receipt', None)
-
     if not file:
         return Response({"error": "No file uploaded."}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Validate file size and extension (as per the previous example)
+    # Validate file size and extension
     try:
         validate_file(file)
     except ValidationError as e:
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Send the file to GPT-4 for processing
+    # Read the file content as an image
     try:
-        receipt_data = process_receipt_with_gpt(file)
-        return Response(receipt_data, status=status.HTTP_200_OK)
+        image = Image.open(file)
     except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({"error": "Invalid image format."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Use Tesseract to extract text from the image
+    extracted_text = pytesseract.image_to_string(image)
+
+    # Extract amounts and descriptions from the text
+    amounts, total_amount, description = extract_amounts_and_description(extracted_text)
+
+    # Return the result as JSON
+    return Response({
+        "amounts": amounts,
+        "total_amount": total_amount,
+        "description": description
+    }, status=status.HTTP_200_OK)
+
+
+def extract_amounts_and_description(text):
+    # Regex to find all amounts (assuming they are in the format $xx.xx or similar)
+    amounts = [float(match.group(0).replace('$', '')) for match in re.finditer(r'\$\d+(?:\.\d{2})?', text)]
+    total_amount = sum(amounts)
+
+    # Simple extraction of description (e.g., first line after removing unnecessary characters)
+    description = text.strip().split('\n')[0] if text else "No description found"
+
+    return amounts, total_amount, description
 
 
 def validate_file(file):
@@ -161,56 +195,3 @@ def validate_file(file):
     ext = os.path.splitext(file.name)[1].lower()
     if ext not in allowed_extensions:
         raise ValidationError("Invalid file type. Allowed types: PDF or images.")
-
-
-def process_receipt_with_gpt(file_content):
-    # Make a request to GPT-4 with the custom function call for receipts
-    response = openai.chat.completions.create(
-        model="gpt-4",
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a system that processes receipts and extracts key details."
-            },
-            {
-                "role": "user",
-                "content": "Here is a receipt. Please extract the total amount and description.",
-                "files": {"receipt": file_content}
-            }
-        ],
-        functions=[
-            {
-                "name": "extract_receipt_data",
-                "description": "Extracts the total amount and description from a receipt.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "amount": {
-                            "type": "number",
-                            "description": "The total amount on the receipt."
-                        },
-                        "description": {
-                            "type": "string",
-                            "description": "A brief description of the receipt."
-                        }
-                    },
-                    "required": ["amount", "description"]
-                }
-            }
-        ],
-        response_format={"type" : "json_object"},
-        function_call={"name": "extract_receipt_data"}
-    )
-
-    # Process the response from GPT-4
-    function_result = response.get("choices")[0].get("message").get("function_call").get("arguments")
-
-    if function_result:
-        # Parse the result
-        receipt_data = function_result
-        return {
-            "amount": receipt_data.get("amount"),
-            "description": receipt_data.get("description")
-        }
-    else:
-        return {"error": "file is not receipt"}
