@@ -209,16 +209,24 @@ def extract_receipt_data(text):
         "description": None,
     }
 
-    # Example regex patterns to extract relevant fields
-    item_no_pattern = re.compile(r"Item No:\s*(\d+)")
-    product_pattern = re.compile(r"Product service:\s*([\w\s-]+)")
-    quantity_pattern = re.compile(r"Quantity:\s*(\d+)")
-    unit_price_pattern = re.compile(r"Unit price:\s*\$?(\d+(\.\d{2})?)")
-    subtotal_pattern = re.compile(r"Subtotal:\s*\$?(\d+(\.\d{2})?)")
-    tax_pattern = re.compile(r"tax:\s*\$?(\d+(\.\d{2})?)")
-    discount_pattern = re.compile(r"discount:\s*\$?(\d+(\.\d{2})?)")
-    amount_pattern = re.compile(r"amount:\s*\$?(\d+(\.\d{2})?)")
-    description_pattern = re.compile(r"description:\s*(.*)")
+    # Define regex patterns to extract relevant fields
+    item_no_pattern = re.compile(r"(?i)item\s*no\.?\s*:\s*(\d+)", re.IGNORECASE)
+    product_pattern = re.compile(
+        r"(?i)product\s*service\s*:\s*([\w\s-]+)", re.IGNORECASE
+    )
+    quantity_pattern = re.compile(r"(?i)quantity\s*:\s*(\d+)", re.IGNORECASE)
+    unit_price_pattern = re.compile(
+        r"(?i)unit\s*price\s*:\s*\$?(\d+(\.\d{2})?)", re.IGNORECASE
+    )
+    subtotal_pattern = re.compile(
+        r"(?i)subtotal\s*:\s*\$?(\d+(\.\d{2})?)", re.IGNORECASE
+    )
+    tax_pattern = re.compile(r"(?i)tax\s*:\s*\$?(\d+(\.\d{2})?)", re.IGNORECASE)
+    discount_pattern = re.compile(
+        r"(?i)discount\s*:\s*\$?(\d+(\.\d{2})?)", re.IGNORECASE
+    )
+    amount_pattern = re.compile(r"(?i)amount\s*:\s*\$?(\d+(\.\d{2})?)", re.IGNORECASE)
+    description_pattern = re.compile(r"(?i)description\s*:\s*(.*)", re.IGNORECASE)
 
     # Extract data using regex patterns
     if match := item_no_pattern.search(text):
